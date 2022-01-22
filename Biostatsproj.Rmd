@@ -1,0 +1,234 @@
+---
+title: "Final Thursday"
+author: "Group R3"
+date: "12/08/2017"
+output:
+  pdf_document: default
+  html_document: default
+  word_document: default
+---
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+```
+# Installing Packages & Setting Up Tests
+```{r}
+#install.packages("magrittr")
+library(magrittr)
+library(readxl)
+library(survival)
+library(beeswarm)
+library(ggplot2)
+library(RColorBrewer)
+library(gplots)
+library(plyr)
+library(survminer)
+par(mar=c(1,1,1,1))
+```
+# Get data
+```{r}
+setwd("~/Desktop/WeillCornell_Course_Material_Fall2017/R_Lab_AllClassWork_Fall_2017/R_BioStat_Assignments/Final_Biostat")
+```
+###################################################################################################
+# Note 1: When ever data is continuous we have dichotomized into two groups to visualize the corresponding Kaplan Meier curves.For example for BMI we have used more than 25 to split into two groups >25 and <25.This is done for all continuous variables.
+
+# Note 2: We are keeping log rank test for the following rerason.
+
+#We have done Log rank test.This test is mostly used for categorical variablers. We are using this test to capture some of the information which might not be possible to obtain form Cox regression test. For example, we may have the hazard ratio which is not uniform in time and has both periods when it is greater than one and periods where it is less than one.
+
+# Note 3: We are including Treatment in our analyisis, thoguh it is not significant in the univariate analysis, since it is a medically very relevant variable.
+
+###################################################################################################
+#Labeling and Manipulating the Dataset
+
+```{r}
+final<-as.data.frame(read_excel("Final.xlsx"))
+names(final)
+colnames(final)[2]<-"Time"  # Simpler name for follow up time
+colnames(final)
+```
+```{r}
+SingleSubset <- subset(final, Treatment == "Single")
+DoubleSubset <- subset(final, Treatment == "Double")
+FailureSubset <- subset(final, Failure == 1)
+NoFailureSubset <- subset(final, Failure == 0)
+```
+# Kaplan-Meier Curve
+```{r}
+#Start with the Kaplan-Meier survival curve for the whole dataset.
+fit <- survfit(Surv(Time, Failure) ~ 1, data=final) # All data
+plot(fit,mark.time=TRUE)
+#Let us look at the number of failure events.
+table(final$Failure)
+#About half the people have failure.
+#We will test for significant effect of individual covariates, continuous or categorical, to select variables for the final fit. We will test at a not so stringent cutoff of 20%.
+```
+#The Effect of Gender/Sex.
+```{r}
+fit_sex_2 <- survfit(Surv(Time, Failure) ~ Sex, data=final)
+plot(fit_sex_2,col=c(1,2),conf.int=T,mark.time=TRUE, main = 'Survival Analysis of Sex', xlab = 'Days to Lung Failure', ylab = 'Survival Probability')
+ggsurvplot(fit_sex_2)
+ggsurvplot(fit_sex_2, conf.int=TRUE, pval=TRUE, risk.table=TRUE,
+legend.labs=c("Other", "White"), legend.title="Sex",
+		palette=c("pink", "green"),
+		main="Survival Analysis of Sex",
+		risk.table.height=.15)
+table.sex <- table(final$Sex)
+piesex <- c("Female", "Male")
+pie(table.sex, labels = piesex, main="Pie Chart of Sex")
+coxph_Sex <- coxph(Surv(Time, Failure) ~ Sex, data=final) # Effect of Sex
+summary(coxph_Sex)
+```
+#The Effect of Treatment
+```{r}
+fit_Treatment <- survfit(Surv(Time, Failure) ~ Treatment, data=final)# By Treatment
+ggsurvplot(fit_Treatment)
+ggsurvplot(fit_Treatment, conf.int=TRUE, pval=TRUE, risk.table=TRUE,
+legend.labs=c("Double", "Single"), legend.title="Treatment",
+palette=c("purple", "orange"),
+main="Treatment",
+risk.table.height=.15)
+#Double seem to do a bit better compared to single transplant, but the confidence intervals still overlap.
+ggplot(data=final, aes(x=Treatment, y=Time, fill=Treatment)) + geom_violin(scale = "count", trim = FALSE) + geom_boxplot(width=0.1) + scale_fill_manual(values=c("medium purple", "orange")) + theme(legend.position="top")
+
+#Although the violin ggplot shows a higher average follow up time for the double treatment strategy compared to the single treatment strategy, survival analysis with a p-value of 0.75 shows follow-up times are not sigficantly different.
+#Log rank test
+survdiff(Surv(Time, Failure) ~ Treatment, data=final) # Effect of Treatment
+#P-value of 0.753, suggesting the difference between treatments is not significant.
+#Let us use cox regression.
+coxph_Treat <- coxph(Surv(Time, Failure) ~ Treatment, data=final) # Effect of Treatment
+summary(coxph_Treat)
+#Treatment does not seem to be very significant!
+```
+#The Effect of Blood Type
+```{r}
+fit_Blood <- survfit(Surv(Time, Failure) ~ Blood, data=final)# By Blood (type)
+ggsurvplot(fit_Blood)
+ggsurvplot(fit_Blood, conf.int=FALSE, pval=TRUE, risk.table=TRUE,
+legend.labs=c("A", "AB", "B", "O"), legend.title="Blood Type",
+main="Blood Type",
+risk.table.height=.15)
+table(final$Blood)
+ggplot(data=final, aes(x=Blood, y=Time, fill=Blood)) + geom_violin(scale = "count", trim = FALSE) + geom_boxplot(width=0.1) + theme(legend.position="top")
+#AB and B are small in number in the dataset and have wide confidence interval, as a result
+#Log rank test
+survdiff(Surv(Time, Failure) ~ Blood, data=final) # Effect of Blood type
+#P-value of 0.338, suggesting the difference between treatments is not significant.
+#Let us use cox regression.
+coxph_Blood <- coxph(Surv(Time, Failure) ~ Blood, data=final) # Effect of Blood type
+summary(coxph_Blood)
+#Blood type AB and O crossed our lax significance threshold. It is a mild effect.
+```
+#The Effect of Race
+```{r}
+fit_Race <- survfit(Surv(Time, Failure) ~ Race, data=final)# By Race (type)
+plot(fit_Race,col=c(1,2),conf.int=T,mark.time=TRUE) # Black other, red White.
+table(final$Race)
+ggsurvplot(fit_Race, conf.int=TRUE, pval=TRUE, risk.table=TRUE,
+legend.labs=c("Other", "White"), legend.title="Race",
+palette=c("pink", "green"),
+main="Race",
+risk.table.height=.15)
+table.race <- table(final$Race)
+pierace <- c("Other", "White")
+pie(table.race, labels = pierace, main="Pie Chart of Race")
+#Only 6 in the other category. Rest are white.
+#Race
+#Log rank test
+survdiff(Surv(Time, Failure) ~ Race, data=final) # Effect of Race
+# P-value of 0.781, suggesting the difference between race is not significant.
+# Let us use cox regression.
+coxph_Race <- coxph(Surv(Time, Failure) ~ Race, data=final) # Effect of Race
+summary(coxph_Race)
+# Race is Not significant, again.
+```
+#Body Mass Index (BMI) Univariate Regression
+```{r}
+# First let's start off by visualizing our data.
+ggplot(data=final, aes(final$BMI)) +
+geom_histogram(breaks=seq(15, 35, by=1),
+col="red",
+aes(fill=..count..)) +
+scale_fill_gradient("Count", low="green", high="red") +
+labs(title="Histogram Representing BMI Distribution", x="BMI", y="Count")
+# Majority of our sample has a BMI under 25.
+fit_BMI_high <- survfit(Surv(Time, Failure) ~ (BMI > 25), data=final)
+plot(fit_BMI_high,col=c(1,2),conf.int=T,mark.time=TRUE, main = 'Survival Analysis of BMI', xlab = 'Days to Lung Failure', ylab = 'Survival Probability')
+ggsurvplot(fit_BMI_high)
+ggsurvplot(fit_BMI_high, conf.int=TRUE, pval=TRUE, risk.table=TRUE,
+legend.labs=c("Other", "White"), legend.title="BMI",
+palette=c("pink", "green"),
+main="Survival Analysis of BMI",
+risk.table.height=.15)
+# Seems that high BMI patients have worse results (quicker failure).
+# Effect of BMI on Survival Using Cox Regressions.
+coxph_BMI <- coxph(Surv(Time, Failure) ~ BMI, data=final)
+summary(coxph_BMI)
+# The result is quite significant (p=0.00964) therefore BMI should be added to our multivariate regression.
+```
+#Pulmonary Pressure Univariate Regression
+```{r}
+# Let us look at the PP histogram
+ggplot(data=final, aes(final$PP)) +
+geom_histogram(breaks=seq(10, 65, by=1),
+col="red",
+aes(fill=..count..)) +
+scale_fill_gradient("Count", low="green", high="red") +
+labs(title="Histogram Representing Pulmonary Pressure Distribution", x="PP", y="Count")
+# Seems ok to choose the cutoff of 25.
+fit_PP_hl <- survfit(Surv(Time, Failure) ~ (PP>25), data=final)# By high PP
+plot(fit_PP_hl,col=c(1,2),conf.int=T,mark.time=TRUE)
+ggsurvplot(fit_PP_hl)
+ggsurvplot(fit_PP_hl, conf.int=TRUE, pval=TRUE, risk.table=TRUE,
+legend.labs=c("Other", "White"), legend.title="PP",
+palette=c("pink", "green"),
+main="Survival Analysis of PP",
+risk.table.height=.15)
+# Seems that PP is not a big predictor.
+# Let us use cox regression.
+coxph_PP <- coxph(Surv(Time, Failure) ~ PP, data=final)
+# Effect of PP
+summary(coxph_PP)
+# PP is not very significant (p-value of 0.3 ).
+```
+#Lung Allocation Score (LAS) Univarite Analysis
+```{r}
+hist(final$LAS)
+summary(final$LAS)
+# chose the median value of 33 as a cut off
+fit_LAS_hl <- survfit(Surv(Time, Failure) ~ (LAS>33), data=final)
+ggplot(data = final, aes(final$LAS)) +
+geom_histogram(breaks=seq(25, 95, by=1),
+col="red",
+aes(fill=..count..)) +
+scale_fill_gradient("Count", low="green", high="red") +
+labs(title="Histogram Representing Lung Allocation Score", x="LAS", y="Count")
+# By high LAS
+ggsurvplot(fit_LAS_hl, conf.int=TRUE, pval=TRUE, risk.table=TRUE,
+legend.labs=c("Low", "High"), legend.title="LAS",
+palette=c("pink", "green"),
+main="Survival Analysis by LAS",
+risk.table.height=.15)
+# Let us use cox regression.
+coxph_LAS <- coxph(Surv(Time, Failure) ~ LAS, data=final) # Effect of LAS
+summary(coxph_LAS)
+# LAS has a p-value of 0.4288, ergo it is not significant.
+```
+# Let us look at the Age histogram
+```{r}
+hist(final$Age)
+# Seems ok to choose the cutoff of 60.
+fit_Age_hl <- survfit(Surv(Time, Failure) ~ (Age>60), data=final)# By high BMI
+plot(fit_Age_hl,col=c(1,2),conf.int=T,mark.time=TRUE)
+# Seems that Age is not a big predictor.
+# Let us use cox regression.
+coxph_Age <- coxph(Surv(Time, Failure) ~ Age, data=final) # Effect of BMI
+summary(coxph_Age)
+# Age is not very significant (p-value 0.743).
+```
+# Multivariate Cox Regression
+```{r}
+# Let us use cox regression.
+coxph_mult <- coxph(Surv(Time, Failure) ~ BMI+Treatment+Blood, data=final)
+summary(coxph_mult)
+# BMI matters the most.
+```
